@@ -70,7 +70,7 @@ export function encodeEvent(input: ItemInput): calendar_v3.Schema$Event {
     end = { date: endDate.toISOString().slice(0, 10) };
   }
 
-  const reminders: calendar_v3.Schema$EventReminders = {
+  const reminders: { useDefault: boolean; overrides: calendar_v3.Schema$EventReminder[] } = {
     useDefault: false,
     overrides: input.reminderDaysBefore != null
       ? [{ method: 'popup', minutes: input.reminderDaysBefore * 24 * 60 }]
@@ -149,18 +149,96 @@ function timeToMinutes(hhmm: string): number {
   return h * 60 + m;
 }
 
-// ── Calendar client (added in Task 4) ─────────────────────────────────────
-// Placeholder exports so API routes can import without error during dev.
-// These are replaced with real implementations in Task 4.
-export async function listItems(_filters: Record<string, string | undefined> = {}): Promise<HomeworkItem[]> {
-  throw new Error('Not implemented yet');
+// ── Calendar client factory ────────────────────────────────────────────────
+
+function getClient(): { client: calendar_v3.Calendar; calendarId: string } {
+  const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const calendarId = process.env.CALENDAR_ID;
+  if (!json) throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_JSON env var');
+  if (!calendarId) throw new Error('Missing CALENDAR_ID env var');
+  const auth = new google.auth.GoogleAuth({
+    credentials: JSON.parse(json),
+    scopes: ['https://www.googleapis.com/auth/calendar'],
+  });
+  return { client: google.calendar({ version: 'v3', auth }), calendarId };
 }
-export async function createItem(_input: ItemInput): Promise<HomeworkItem> {
-  throw new Error('Not implemented yet');
+
+// ── CRUD ───────────────────────────────────────────────────────────────────
+
+export interface ListFilters {
+  from?: string;
+  to?: string;
+  type?: EventType;
+  subject?: string;
+  status?: Status;
 }
-export async function updateItem(_id: string, _patch: Partial<ItemInput>): Promise<HomeworkItem> {
-  throw new Error('Not implemented yet');
+
+export async function listItems(filters: ListFilters = {}): Promise<HomeworkItem[]> {
+  const { client, calendarId } = getClient();
+
+  const timeMin = filters.from
+    ? new Date(filters.from).toISOString()
+    : new Date().toISOString();
+  const timeMax = filters.to
+    ? new Date(filters.to + 'T23:59:59').toISOString()
+    : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
+
+  const res = await client.events.list({
+    calendarId,
+    timeMin,
+    timeMax,
+    singleEvents: true,
+    orderBy: 'startTime',
+    maxResults: 250,
+  });
+
+  const items = (res.data.items ?? [])
+    .map(decodeEvent)
+    .filter((i): i is HomeworkItem => i !== null);
+
+  return items.filter(item => {
+    if (filters.type && item.type !== filters.type) return false;
+    if (filters.subject && item.subject.toLowerCase() !== filters.subject.toLowerCase()) return false;
+    if (filters.status && item.status !== filters.status) return false;
+    return true;
+  });
 }
-export async function deleteItem(_id: string): Promise<void> {
-  throw new Error('Not implemented yet');
+
+export async function createItem(input: ItemInput): Promise<HomeworkItem> {
+  const { client, calendarId } = getClient();
+  const resource = encodeEvent({ ...input, status: 'pending' });
+  const res = await client.events.insert({ calendarId, requestBody: resource });
+  const decoded = decodeEvent(res.data);
+  if (!decoded) throw new Error('Failed to decode created event');
+  return decoded;
+}
+
+export async function updateItem(id: string, patch: Partial<ItemInput>): Promise<HomeworkItem> {
+  const { client, calendarId } = getClient();
+  const existing = await client.events.get({ calendarId, eventId: id });
+  const current = decodeEvent(existing.data);
+  if (!current) throw new Error('Event not found or not a homework item');
+
+  const merged: ItemInput = {
+    title: patch.title ?? current.title,
+    type: patch.type ?? current.type,
+    subject: patch.subject ?? current.subject,
+    dueDate: patch.dueDate ?? current.dueDate,
+    dueTime: patch.dueTime ?? current.dueTime,
+    durationMin: patch.durationMin ?? current.durationMin,
+    notes: patch.notes ?? current.notes,
+    reminderDaysBefore: patch.reminderDaysBefore ?? current.reminderDaysBefore,
+    status: patch.status ?? current.status,
+  };
+
+  const resource = encodeEvent(merged);
+  const res = await client.events.patch({ calendarId, eventId: id, requestBody: resource });
+  const decoded = decodeEvent(res.data);
+  if (!decoded) throw new Error('Failed to decode updated event');
+  return decoded;
+}
+
+export async function deleteItem(id: string): Promise<void> {
+  const { client, calendarId } = getClient();
+  await client.events.delete({ calendarId, eventId: id });
 }
