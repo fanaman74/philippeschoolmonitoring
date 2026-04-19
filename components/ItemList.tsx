@@ -28,16 +28,24 @@ function relativeLabel(dateStr: string): string {
 
 export default function ItemList({ items, onUpdate }: Props) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function toggleDone(item: HomeworkItem) {
     setLoadingId(item.id);
+    setActionError(null);
     try {
-      await fetch(`/api/events/${item.id}`, {
+      const res = await fetch(`/api/events/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: item.status === 'done' ? 'pending' : 'done' }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Failed to update');
+      }
       onUpdate();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Action failed');
     } finally {
       setLoadingId(null);
     }
@@ -46,20 +54,35 @@ export default function ItemList({ items, onUpdate }: Props) {
   async function handleDelete(item: HomeworkItem) {
     if (!confirm(`Delete "${item.title}"?`)) return;
     setLoadingId(item.id);
+    setActionError(null);
     try {
-      await fetch(`/api/events/${item.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/events/${item.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Failed to delete');
+      }
       onUpdate();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Action failed');
     } finally {
       setLoadingId(null);
     }
   }
 
   if (items.length === 0) {
-    return <p className="text-gray-400 text-sm py-6 text-center">No items found.</p>;
+    return (
+      <>
+        {actionError && <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm mb-2">{actionError}</div>}
+        <p className="text-gray-400 text-sm py-6 text-center">No items found.</p>
+      </>
+    );
   }
 
   return (
     <div className="space-y-2">
+      {actionError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">{actionError}</div>
+      )}
       {items.map(item => (
         <div
           key={item.id}

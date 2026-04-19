@@ -30,7 +30,17 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const item = await createItem(body);
+    const input = {
+      title: body.title as string,
+      type: body.type,
+      subject: body.subject as string,
+      dueDate: body.dueDate as string,
+      ...(body.dueTime && { dueTime: body.dueTime as string }),
+      ...(body.durationMin != null && { durationMin: Number(body.durationMin) }),
+      ...(body.notes && { notes: body.notes as string }),
+      ...(body.reminderDaysBefore != null && { reminderDaysBefore: Number(body.reminderDaysBefore) }),
+    };
+    const item = await createItem(input);
     return NextResponse.json({ item }, { status: 201 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

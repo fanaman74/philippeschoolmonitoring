@@ -53,7 +53,7 @@ export default function HomePage() {
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
-  const subjects = [...new Set(items.map(i => i.subject))].sort();
+  const subjects = ['Art', 'English', 'French', 'Geography', 'History', 'Math', 'PE', 'Science'];
 
   return (
     <main className="max-w-2xl mx-auto p-4 space-y-6">
