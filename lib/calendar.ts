@@ -64,7 +64,10 @@ export function encodeEvent(input: ItemInput): calendar_v3.Schema$Event {
     end = { dateTime: `${endDate}T${pad(endH)}:${pad(endM)}:00`, timeZone: TZ };
   } else {
     start = { date: input.dueDate };
-    end = { date: input.dueDate };
+    // Google Calendar requires end date to be exclusive (next day for all-day events)
+    const endDate = new Date(input.dueDate);
+    endDate.setDate(endDate.getDate() + 1);
+    end = { date: endDate.toISOString().slice(0, 10) };
   }
 
   const reminders: calendar_v3.Schema$EventReminders = {

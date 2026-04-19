@@ -15,7 +15,7 @@ describe('encodeEvent', () => {
     expect(event.colorId).toBe('7');
     expect(event.description).toBe('Subject: Math');
     expect(event.start).toEqual({ date: '2026-05-01' });
-    expect(event.end).toEqual({ date: '2026-05-01' });
+    expect(event.end).toEqual({ date: '2026-05-02' });
     expect(event.reminders?.useDefault).toBe(false);
     expect(event.reminders?.overrides).toEqual([]);
   });
