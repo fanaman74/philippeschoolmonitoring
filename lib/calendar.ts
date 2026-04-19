@@ -149,11 +149,15 @@ function getClient(): { client: calendar_v3.Calendar; calendarId: string } {
   const calendarId = process.env.CALENDAR_ID;
   if (!json) throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_JSON env var');
   if (!calendarId) throw new Error('Missing CALENDAR_ID env var');
-  let credentials: object;
+  let credentials: { private_key?: string } & object;
   try {
-    credentials = JSON.parse(json) as object;
+    credentials = JSON.parse(json) as { private_key?: string } & object;
   } catch {
     throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON — check for escaped newlines or truncation');
+  }
+  // Railway env vars store literal \n; replace with real newlines so OpenSSL can parse the PEM key
+  if (credentials.private_key) {
+    credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
   }
   const auth = new google.auth.GoogleAuth({
     credentials,
