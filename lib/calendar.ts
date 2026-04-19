@@ -114,11 +114,9 @@ export function decodeEvent(event: calendar_v3.Schema$Event): HomeworkItem | nul
     dueDate = event.start.dateTime.slice(0, 10);
     dueTime = event.start.dateTime.slice(11, 16);
     if (event.end?.dateTime) {
-      const startSec = timeToMinutes(event.start.dateTime.slice(11, 16));
-      const endSec = timeToMinutes(event.end.dateTime.slice(11, 16));
-      durationMin = endSec >= startSec
-        ? endSec - startSec
-        : (24 * 60 - startSec) + endSec;
+      const startMs = new Date(event.start.dateTime).getTime();
+      const endMs = new Date(event.end.dateTime).getTime();
+      durationMin = Math.round((endMs - startMs) / 60000);
     }
   } else {
     return null;
@@ -144,11 +142,6 @@ export function decodeEvent(event: calendar_v3.Schema$Event): HomeworkItem | nul
   };
 }
 
-function timeToMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
-
 // ── Calendar client factory ────────────────────────────────────────────────
 
 function getClient(): { client: calendar_v3.Calendar; calendarId: string } {
@@ -156,8 +149,14 @@ function getClient(): { client: calendar_v3.Calendar; calendarId: string } {
   const calendarId = process.env.CALENDAR_ID;
   if (!json) throw new Error('Missing GOOGLE_SERVICE_ACCOUNT_JSON env var');
   if (!calendarId) throw new Error('Missing CALENDAR_ID env var');
+  let credentials: object;
+  try {
+    credentials = JSON.parse(json) as object;
+  } catch {
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON — check for escaped newlines or truncation');
+  }
   const auth = new google.auth.GoogleAuth({
-    credentials: JSON.parse(json),
+    credentials,
     scopes: ['https://www.googleapis.com/auth/calendar'],
   });
   return { client: google.calendar({ version: 'v3', auth }), calendarId };
@@ -176,9 +175,10 @@ export interface ListFilters {
 export async function listItems(filters: ListFilters = {}): Promise<HomeworkItem[]> {
   const { client, calendarId } = getClient();
 
+  const tz = process.env.TIMEZONE ?? 'Europe/Brussels';
   const timeMin = filters.from
-    ? new Date(filters.from).toISOString()
-    : new Date().toISOString();
+    ? new Date(filters.from + 'T00:00:00').toISOString()
+    : new Date(new Date().toLocaleDateString('en-CA', { timeZone: tz }) + 'T00:00:00').toISOString();
   const timeMax = filters.to
     ? new Date(filters.to + 'T23:59:59').toISOString()
     : new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
